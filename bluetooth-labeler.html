@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NDVI·LABEL — NDVIデータラベラー</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Noto+Sans+JP:wght@300;400;600&display=swap');
+
+  :root {
+    --bg: #080c08;
+    --surface: #0f1410;
+    --border: #1a2a1a;
+    --accent: #4caf50;
+    --accent2: #8bc34a;
+    --accent3: #ff7043;
+    --text: #c8dcc8;
+    --muted: #4a5e4a;
+    --success: #69f0ae;
+    --warning: #ffca28;
+    --east: #42a5f5;
+    --west: #ef5350;
+    --highlight: rgba(76,175,80,0.06);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans JP', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(76,175,80,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(76,175,80,0.025) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 32px 24px;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 36px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo {
+    font-family: 'Space Mono', monospace;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    text-shadow: 0 0 20px rgba(76,175,80,0.5);
+  }
+  .logo span { color: var(--accent2); }
+  .logo sub {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+    margin-left: 10px;
+    vertical-align: middle;
+    font-weight: 400;
+  }
+
+  .status-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }
+
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); transition: all 0.3s; }
+  .dot.active { background: var(--success); box-shadow: 0 0 8px var(--success); animation: blink 2s infinite; }
+  .dot.scanning { background: var(--warning); box-shadow: 0 0 8px var(--warning); animation: blink 0.7s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 24px 28px;
+    margin-bottom: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), transparent);
+  }
+
+  .section-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 16px;
+  }
+
+  .btn {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-primary { background: var(--accent); color: #000; }
+  .btn-primary:hover { background: #66bb6a; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(76,175,80,0.35); }
+  .btn-primary:disabled { background: var(--muted); cursor: not-allowed; transform: none; box-shadow: none; }
+  .btn-danger { background: transparent; color: var(--accent3); border: 1px solid var(--accent3); }
+  .btn-danger:hover { background: rgba(255,112,67,0.1); }
+  .btn-ghost { background: transparent; color: var(--accent); border: 1px solid var(--border); }
+  .btn-ghost:hover { border-color: var(--accent); background: rgba(76,175,80,0.06); }
+  .btn-sm { font-size: 10px; padding: 5px 12px; }
+  .btn-xs { font-size: 9px; padding: 4px 10px; letter-spacing: 0.05em; }
+
+  .scan-controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .device-info { display: flex; flex-direction: column; gap: 2px; font-family: 'Space Mono', monospace; }
+  .device-name { color: var(--success); font-size: 13px; }
+  .device-id { color: var(--muted); font-size: 10px; }
+
+  .no-bt-notice {
+    background: rgba(255,202,40,0.07);
+    border: 1px solid rgba(255,202,40,0.25);
+    border-radius: 2px;
+    padding: 10px 14px;
+    font-size: 11px;
+    color: var(--warning);
+    font-family: 'Space Mono', monospace;
+    margin-bottom: 14px;
+    display: none;
+  }
+
+  /* ── Log stream ── */
+  .stream-container {
+    background: #050805;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    max-height: 420px;
+    overflow-y: auto;
+  }
+
+  .stream-empty {
+    padding: 36px;
+    text-align: center;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  /* log row — 4 columns: ts | ndvi value | label area | actions */
+  .log-row {
+    display: grid;
+    grid-template-columns: 68px 120px 1fr auto;
+    align-items: center;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    transition: background 0.15s;
+    animation: rowIn 0.25s ease;
+  }
+  @keyframes rowIn { from { opacity:0; transform:translateX(-5px); } to { opacity:1; transform:none; } }
+  .log-row:last-child { border-bottom: none; }
+  .log-row:hover { background: var(--highlight); }
+  .log-row.labeled { background: rgba(105,240,174,0.04); }
+  .log-row.labeled:hover { background: rgba(105,240,174,0.07); }
+
+  /* inline form spans all cols */
+  .log-row .inline-form {
+    grid-column: 1 / -1;
+  }
+
+  .log-ts {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    padding: 11px 8px 11px 14px;
+    white-space: nowrap;
+  }
+
+  .log-ndvi {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 11px 10px;
+    white-space: nowrap;
+  }
+
+  /* colour by NDVI value */
+  .ndvi-neg  { color: #ef9a9a; }
+  .ndvi-low  { color: #ffe082; }
+  .ndvi-mid  { color: #aed581; }
+  .ndvi-high { color: #69f0ae; }
+
+  .log-label-area {
+    padding: 8px 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  /* label chip */
+  .label-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border-radius: 2px;
+    padding: 3px 9px;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .label-chip.west {
+    background: rgba(239,83,80,0.12);
+    border: 1px solid rgba(239,83,80,0.35);
+    color: var(--west);
+  }
+  .label-chip.east {
+    background: rgba(66,165,245,0.12);
+    border: 1px solid rgba(66,165,245,0.35);
+    color: var(--east);
+  }
+  .label-chip .dir-badge {
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    opacity: 0.75;
+  }
+  .label-chip .remove-label {
+    background: none; border: none;
+    cursor: pointer; font-size: 11px; padding: 0 1px; line-height: 1;
+    opacity: 0.5; transition: opacity 0.15s;
+    color: inherit;
+  }
+  .label-chip .remove-label:hover { opacity: 1; }
+
+  .add-label-btn {
+    background: none;
+    border: 1px dashed var(--border);
+    border-radius: 2px;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    padding: 3px 9px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .add-label-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── Inline form ── */
+  .inline-form {
+    background: rgba(76,175,80,0.04);
+    border-top: 1px solid rgba(76,175,80,0.12);
+    padding: 12px 16px;
+    display: none;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .inline-form.open { display: flex; }
+
+  .inline-form-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  /* Number select */
+  .inline-form select {
+    background: #050805;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    padding: 6px 10px;
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  .inline-form select:focus { border-color: var(--accent); }
+  .inline-form select option { background: #0f1410; }
+
+  /* Direction toggle buttons */
+  .dir-toggle { display: flex; gap: 0; border-radius: 2px; overflow: hidden; border: 1px solid var(--border); }
+  .dir-btn {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 6px 18px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.06em;
+  }
+  .dir-btn.west-btn { background: #1a0a0a; color: var(--muted); }
+  .dir-btn.east-btn { background: #0a0e1a; color: var(--muted); }
+  .dir-btn.west-btn.active { background: rgba(239,83,80,0.25); color: var(--west); border-color: var(--west); }
+  .dir-btn.east-btn.active { background: rgba(66,165,245,0.25); color: var(--east); }
+  .dir-btn:hover { opacity: 0.85; }
+
+  /* Actions */
+  .log-actions {
+    padding: 8px 14px 8px 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .del-row-btn {
+    background: none; border: none; color: var(--muted);
+    cursor: pointer; font-size: 14px; padding: 2px 4px; line-height: 1;
+    transition: color 0.15s;
+  }
+  .del-row-btn:hover { color: var(--accent3); }
+
+  /* Progress bar */
+  .progress-bar-wrap {
+    background: var(--border);
+    border-radius: 2px;
+    height: 4px;
+    margin-top: 12px;
+    overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 2px;
+    transition: width 0.4s ease;
+  }
+
+  .bottom-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+    margin-top: 16px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .bottom-stats {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    gap: 20px;
+  }
+  .bottom-stats b { color: var(--accent); font-weight: 700; }
+  .export-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .toast {
+    position: fixed;
+    bottom: 28px; right: 28px;
+    background: var(--surface);
+    border: 1px solid var(--accent);
+    border-radius: 2px;
+    padding: 12px 18px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--accent);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.6);
+    z-index: 100;
+    transform: translateY(70px);
+    opacity: 0;
+    transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    max-width: 300px;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="logo">NDVI<span>·</span>LABEL<sub>BLUETOOTH SENSOR</sub></div>
+    <div class="status-badge">
+      <div class="dot" id="statusDot"></div>
+      <span id="statusText">DISCONNECTED</span>
+    </div>
+  </header>
+
+  <!-- 接続 -->
+  <div class="panel">
+    <div class="section-label">// 01 — デバイス接続</div>
+    <div class="no-bt-notice" id="noBtNotice">
+      ⚠ このブラウザはWeb Bluetooth APIに対応していません。デモモードで動作します。
+    </div>
+    <div class="scan-controls">
+      <button class="btn btn-primary" id="scanBtn" onclick="startScan()">Bluetooth スキャン</button>
+      <button class="btn btn-danger" id="disconnectBtn" onclick="disconnect()" style="display:none">切断</button>
+      <button class="btn btn-ghost btn-sm" onclick="addDemoData()">デモデータ追加</button>
+      <button class="btn btn-ghost btn-sm" onclick="addDemoBatch()">デモ×5</button>
+      <div class="device-info" id="deviceInfo" style="display:none">
+        <div class="device-name" id="deviceName">—</div>
+        <div class="device-id" id="deviceId"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ログ -->
+  <div class="panel">
+    <div class="section-label">// 02 — NDVIデータ受信ログ（各行に番号と方角をつける）</div>
+
+    <div class="stream-container" id="streamContainer">
+      <div class="stream-empty" id="streamEmpty">// NDVIデータを待機中...</div>
+    </div>
+
+    <div id="progressWrap" style="display:none">
+      <div class="progress-bar-wrap">
+        <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
+      </div>
+    </div>
+
+    <div class="bottom-bar">
+      <div class="bottom-stats">
+        <div>受信: <b id="totalRows">0</b></div>
+        <div>命名済み: <b id="labeledRows">0</b> / <b id="totalRows2">0</b></div>
+      </div>
+      <div class="export-row">
+        <button class="btn btn-ghost btn-sm" onclick="exportCSV()">CSV 出力</button>
+        <button class="btn btn-ghost btn-sm" onclick="exportJSON()">JSON 出力</button>
+        <button class="btn btn-danger btn-sm" onclick="clearAll()">全削除</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  let rows = [];
+  let device = null;
+  let openFormId = null;
+  // track selected direction per open form
+  let formDir = {}; // id -> 'west'|'east'
+
+  if (!navigator.bluetooth) {
+    document.getElementById('noBtNotice').style.display = 'block';
+  }
+
+  // Build No.1~139 options
+  function buildNumberOptions(selectedNum) {
+    let html = '<option value="">-- No. --</option>';
+    for (let i = 1; i <= 139; i++) {
+      html += `<option value="${i}"${selectedNum==i?' selected':''}>${i}</option>`;
+    }
+    return html;
+  }
+
+  /* ── Bluetooth ── */
+  async function startScan() {
+    if (!navigator.bluetooth) { addDemoData(); return; }
+    try {
+      setStatus('scanning');
+      document.getElementById('scanBtn').disabled = true;
+      device = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: ['battery_service','heart_rate','generic_access',
+          '0000ffe0-0000-1000-8000-00805f9b34fb']
+      });
+      device.addEventListener('gattserverdisconnected', onDisconnected);
+      const server = await device.gatt.connect();
+      setStatus('connected', device.name || device.id);
+      document.getElementById('deviceName').textContent = device.name || '名称不明';
+      document.getElementById('deviceId').textContent = `ID: ${device.id.slice(0,16)}...`;
+      document.getElementById('deviceInfo').style.display = 'block';
+      document.getElementById('disconnectBtn').style.display = 'inline-block';
+      document.getElementById('scanBtn').style.display = 'none';
+      showToast(`✓ ${device.name || 'デバイス'} に接続`);
+      tryServices(server);
+    } catch(e) {
+      if (e.name !== 'NotFoundError') showToast(`接続エラー: ${e.message}`);
+      setStatus('disconnected');
+      document.getElementById('scanBtn').disabled = false;
+    }
+  }
+
+  async function tryServices(server) {
+    // Generic NDVI via custom characteristic (example: HM-10 style)
+    try {
+      const svc = await server.getPrimaryService('0000ffe0-0000-1000-8000-00805f9b34fb');
+      const ch  = await svc.getCharacteristic('0000ffe1-0000-1000-8000-00805f9b34fb');
+      await ch.startNotifications();
+      ch.addEventListener('characteristicvaluechanged', e => {
+        const decoder = new TextDecoder();
+        const text = decoder.decode(e.target.value).trim();
+        const num = parseFloat(text);
+        if (!isNaN(num)) pushRow(num);
+        else pushRow(text);
+      });
+    } catch(_){}
+    // Battery as fallback demo
+    try {
+      const svc = await server.getPrimaryService('battery_service');
+      const ch  = await svc.getCharacteristic('battery_level');
+      const val = await ch.readValue();
+      pushRow((val.getUint8(0) / 100).toFixed(3));
+      await ch.startNotifications();
+      ch.addEventListener('characteristicvaluechanged', e =>
+        pushRow((e.target.value.getUint8(0) / 100).toFixed(3))
+      );
+    } catch(_){}
+  }
+
+  function onDisconnected() {
+    setStatus('disconnected');
+    document.getElementById('deviceInfo').style.display = 'none';
+    document.getElementById('disconnectBtn').style.display = 'none';
+    document.getElementById('scanBtn').style.display = 'inline-block';
+    document.getElementById('scanBtn').disabled = false;
+    showToast('デバイスが切断されました');
+  }
+
+  function disconnect() {
+    if (device && device.gatt.connected) device.gatt.disconnect();
+    else onDisconnected();
+  }
+
+  function setStatus(state, name) {
+    const dot = document.getElementById('statusDot');
+    const txt = document.getElementById('statusText');
+    dot.className = 'dot';
+    if (state === 'connected') {
+      dot.classList.add('active');
+      txt.textContent = name ? `CONNECTED — ${name.slice(0,22)}` : 'CONNECTED';
+    } else if (state === 'scanning') {
+      dot.classList.add('scanning');
+      txt.textContent = 'SCANNING...';
+    } else {
+      txt.textContent = 'DISCONNECTED';
+    }
+  }
+
+  /* ── Demo NDVI values ── */
+  const DEMO_NDVI = [0.823, 0.541, 0.312, 0.756, 0.189, 0.634, 0.072, 0.901, 0.445, 0.267];
+  let demoIdx = 0;
+  function addDemoData() {
+    pushRow(DEMO_NDVI[demoIdx++ % DEMO_NDVI.length]);
+  }
+  function addDemoBatch() {
+    for (let i=0; i<5; i++) setTimeout(()=>pushRow(DEMO_NDVI[demoIdx++%DEMO_NDVI.length]), i*130);
+  }
+
+  /* ── NDVI colour class ── */
+  function ndviClass(val) {
+    const n = parseFloat(val);
+    if (isNaN(n)) return '';
+    if (n < 0)    return 'ndvi-neg';
+    if (n < 0.2)  return 'ndvi-low';
+    if (n < 0.5)  return 'ndvi-mid';
+    return 'ndvi-high';
+  }
+
+  /* ── Push row ── */
+  function pushRow(raw) {
+    const now = new Date();
+    const ts = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
+    const row = { id: Date.now() + Math.random(), ts, raw, label: null };
+    // label: { no: number, dir: 'west'|'east' } or null
+    rows.unshift(row);
+
+    const container = document.getElementById('streamContainer');
+    document.getElementById('streamEmpty').style.display = 'none';
+    document.getElementById('progressWrap').style.display = 'block';
+
+    const el = buildRowEl(row);
+    container.insertBefore(el, container.firstChild);
+
+    updateStats();
+    while (container.children.length > 201) container.removeChild(container.lastChild);
+    if (rows.length > 200) rows = rows.slice(0, 200);
+  }
+
+  /* ── Build DOM ── */
+  function buildRowEl(row) {
+    const wrap = document.createElement('div');
+    wrap.className = 'log-row' + (row.label ? ' labeled' : '');
+    wrap.id = `row-${row.id}`;
+    wrap.innerHTML = rowInnerHTML(row);
+    return wrap;
+  }
+
+  function rowInnerHTML(row) {
+    const ndviFmt = typeof row.raw === 'number'
+      ? row.raw.toFixed(4)
+      : String(row.raw);
+    const cls = ndviClass(row.raw);
+
+    // chip
+    let chipHTML = '';
+    if (row.label) {
+      const dirClass = row.label.dir;
+      const dirText  = row.label.dir === 'west' ? '西' : '東';
+      chipHTML = `
+        <span class="label-chip ${dirClass}">
+          <span class="dir-badge">${dirText}</span>
+          No.${row.label.no}
+          <button class="remove-label" onclick="removeLabel(${JSON.stringify(row.id)})" title="削除">✕</button>
+        </span>`;
+    }
+
+    const isOpen = openFormId === row.id;
+    const selDir = formDir[row.id] || '';
+    const numOptions = buildNumberOptions(row.label ? row.label.no : '');
+
+    return `
+      <div class="log-ts">${row.ts}</div>
+      <div class="log-ndvi ${cls}">NDVI: ${ndviFmt}</div>
+      <div class="log-label-area">
+        ${chipHTML}
+        ${row.label
+          ? `<button class="add-label-btn" onclick="toggleForm(${JSON.stringify(row.id)})">✎ 変更</button>`
+          : `<button class="add-label-btn" onclick="toggleForm(${JSON.stringify(row.id)})">＋ 番号・方角をつける</button>`
+        }
+      </div>
+      <div class="log-actions">
+        <button class="del-row-btn" onclick="deleteRow(${JSON.stringify(row.id)})" title="行を削除">✕</button>
+      </div>
+      <div class="inline-form${isOpen ? ' open' : ''}" id="form-${row.id}">
+        <span class="inline-form-label">No.</span>
+        <select id="num-${row.id}" style="width:90px">${numOptions}</select>
+        <span class="inline-form-label" style="margin-left:6px">方角</span>
+        <div class="dir-toggle">
+          <button class="dir-btn west-btn${selDir==='west'?' active':''}"
+            onclick="setDir(${JSON.stringify(row.id)},'west')">西</button>
+          <button class="dir-btn east-btn${selDir==='east'?' active':''}"
+            onclick="setDir(${JSON.stringify(row.id)},'east')">東</button>
+        </div>
+        <button class="btn btn-primary btn-xs" onclick="confirmLabel(${JSON.stringify(row.id)})">保存</button>
+        <button class="btn btn-ghost btn-xs" onclick="toggleForm(${JSON.stringify(row.id)})">キャンセル</button>
+      </div>`;
+  }
+
+  function setDir(id, dir) {
+    formDir[id] = dir;
+    // re-render just the two buttons
+    const westBtn = document.querySelector(`#form-${id} .west-btn`);
+    const eastBtn = document.querySelector(`#form-${id} .east-btn`);
+    if (westBtn) westBtn.classList.toggle('active', dir === 'west');
+    if (eastBtn) eastBtn.classList.toggle('active', dir === 'east');
+  }
+
+  function toggleForm(id) {
+    if (openFormId && openFormId !== id) {
+      const prev = document.getElementById(`form-${openFormId}`);
+      if (prev) prev.classList.remove('open');
+    }
+    openFormId = (openFormId === id) ? null : id;
+    const form = document.getElementById(`form-${id}`);
+    if (!form) return;
+    form.classList.toggle('open', openFormId === id);
+    // preselect existing label direction
+    if (openFormId === id) {
+      const row = rows.find(r => r.id === id);
+      if (row && row.label) formDir[id] = row.label.dir;
+      setTimeout(() => {
+        const sel = document.getElementById(`num-${id}`);
+        if (sel) sel.focus();
+      }, 40);
+    }
+  }
+
+  function confirmLabel(id) {
+    const row = rows.find(r => r.id === id);
+    if (!row) return;
+    const numEl = document.getElementById(`num-${id}`);
+    const no = numEl ? parseInt(numEl.value) : NaN;
+    const dir = formDir[id];
+    if (!no || isNaN(no)) { showToast('⚠ 番号を選択してください'); return; }
+    if (!dir) { showToast('⚠ 方角（西 / 東）を選択してください'); return; }
+    row.label = { no, dir };
+    openFormId = null;
+    delete formDir[id];
+    rerenderRow(row);
+    updateStats();
+    const dirText = dir === 'west' ? '西' : '東';
+    showToast(`✓ No.${no} ${dirText} を保存`);
+  }
+
+  function removeLabel(id) {
+    const row = rows.find(r => r.id === id);
+    if (!row) return;
+    row.label = null;
+    rerenderRow(row);
+    updateStats();
+  }
+
+  function deleteRow(id) {
+    rows = rows.filter(r => r.id !== id);
+    const el = document.getElementById(`row-${id}`);
+    if (el) el.remove();
+    if (rows.length === 0) {
+      document.getElementById('streamEmpty').style.display = 'block';
+      document.getElementById('progressWrap').style.display = 'none';
+    }
+    updateStats();
+  }
+
+  function rerenderRow(row) {
+    const el = document.getElementById(`row-${row.id}`);
+    if (!el) return;
+    el.className = 'log-row' + (row.label ? ' labeled' : '');
+    el.innerHTML = rowInnerHTML(row);
+  }
+
+  function clearAll() {
+    if (!rows.length) return;
+    if (!confirm('全データを削除しますか？')) return;
+    rows = [];
+    openFormId = null;
+    formDir = {};
+    const c = document.getElementById('streamContainer');
+    c.innerHTML = '<div class="stream-empty" id="streamEmpty">// NDVIデータを待機中...</div>';
+    document.getElementById('progressWrap').style.display = 'none';
+    updateStats();
+    showToast('全データを削除しました');
+  }
+
+  function updateStats() {
+    const total   = rows.length;
+    const labeled = rows.filter(r => r.label).length;
+    document.getElementById('totalRows').textContent   = total;
+    document.getElementById('totalRows2').textContent  = total;
+    document.getElementById('labeledRows').textContent = labeled;
+    const pct = total > 0 ? (labeled / total * 100) : 0;
+    document.getElementById('progressFill').style.width = pct + '%';
+  }
+
+  /* ── Export ── */
+  function exportCSV() {
+    if (!rows.length) { showToast('⚠ データがありません'); return; }
+    const header = 'タイムスタンプ,NDVI値,No.,方角\n';
+    const lines = rows.map(r => {
+      const ndv = typeof r.raw === 'number' ? r.raw.toFixed(4) : r.raw;
+      const no  = r.label ? r.label.no  : '';
+      const dir = r.label ? (r.label.dir === 'west' ? '西' : '東') : '';
+      return `${r.ts},${ndv},${no},${dir}`;
+    });
+    download('\uFEFF' + header + lines.join('\n'), 'ndvi_labels.csv', 'text/csv;charset=utf-8');
+    showToast('✓ CSVをダウンロード');
+  }
+
+  function exportJSON() {
+    if (!rows.length) { showToast('⚠ データがありません'); return; }
+    const out = rows.map(r => ({
+      timestamp: r.ts,
+      ndvi: typeof r.raw === 'number' ? r.raw : parseFloat(r.raw),
+      no:  r.label ? r.label.no  : null,
+      dir: r.label ? r.label.dir : null
+    }));
+    download(JSON.stringify(out, null, 2), 'ndvi_labels.json', 'application/json');
+    showToast('✓ JSONをダウンロード');
+  }
+
+  function download(content, filename, type) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([content], {type}));
+    a.download = filename;
+    a.click();
+  }
+
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  let toastTimer;
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+  }
+</script>
+</body>
+</html>
